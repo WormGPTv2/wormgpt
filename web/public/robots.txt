@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://wormgpt.gitlawb.com/sitemap-index.xml

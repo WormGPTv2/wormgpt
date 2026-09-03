@@ -1,0 +1,419 @@
+import memoize from 'lodash-es/memoize.js'
+import {
+  copyFileSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  readdirSync,
+  statSync,
+  symlinkSync,
+} from 'fs'
+import { homedir } from 'os'
+import { dirname, join } from 'path'
+
+const LEGACY_GLOBAL_CONFIG_FILE_RE =
+  /^\.claude(?:-(?:custom|local|staging)-oauth)?\.json$/
+
+function getErrnoCode(error: unknown): string | undefined {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof error.code === 'string'
+  ) {
+    return error.code
+  }
+  return undefined
+}
+
+function pathExists(path: string): boolean {
+  try {
+    lstatSync(path)
+    return true
+  } catch (error) {
+    if (getErrnoCode(error) === 'ENOENT') {
+      return false
+    }
+    return true
+  }
+}
+
+function pathIsDirectory(path: string): boolean {
+  try {
+    return lstatSync(path).isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function getSymlinkType(source: string): 'dir' | 'file' | 'junction' {
+  if (process.platform !== 'win32') {
+    return 'file'
+  }
+
+  try {
+    return statSync(source).isDirectory() ? 'junction' : 'file'
+  } catch {
+    return 'file'
+  }
+}
+
+function copyMissingPathSync(source: string, destination: string): void {
+  const sourceStats = lstatSync(source)
+
+  if (sourceStats.isDirectory()) {
+    if (!pathExists(destination)) {
+      // Match fsOperations' recursive mkdir behavior while keeping this module
+      // independent from the config-home resolver it backs.
+      mkdirSync(destination, { recursive: true })
+    } else if (!lstatSync(destination).isDirectory()) {
+      throw new Error(`Cannot migrate ${source}: ${destination} is not a directory`)
+    }
+
+    for (const entry of readdirSync(source)) {
+      copyMissingPathSync(join(source, entry), join(destination, entry))
+    }
+    return
+  }
+
+  if (pathExists(destination)) {
+    return
+  }
+
+  mkdirSync(dirname(destination), { recursive: true })
+
+  if (sourceStats.isSymbolicLink()) {
+    symlinkSync(readlinkSync(source), destination, getSymlinkType(source))
+    return
+  }
+
+  if (sourceStats.isFile()) {
+    copyFileSync(source, destination)
+  }
+}
+
+function getLegacyGlobalConfigFiles(homeDir: string): string[] {
+  try {
+    return readdirSync(homeDir).filter(file =>
+      LEGACY_GLOBAL_CONFIG_FILE_RE.test(file),
+    )
+  } catch (error) {
+    if (getErrnoCode(error) === 'ENOENT') {
+      return []
+    }
+    throw error
+  }
+}
+
+export function migrateLegacyClaudeConfigHome(options?: {
+  configDirEnv?: string
+  homeDir?: string
+}): boolean {
+  if (options?.configDirEnv) {
+    return true
+  }
+
+  const homeDir = options?.homeDir ?? homedir()
+  const wormgptDir = join(homeDir, '.wormgpt')
+  const legacyClaudeDir = join(homeDir, '.claude')
+
+  try {
+    const legacyDirExists = pathIsDirectory(legacyClaudeDir)
+    const legacyGlobalConfigFiles = getLegacyGlobalConfigFiles(homeDir)
+
+    if (!legacyDirExists && legacyGlobalConfigFiles.length === 0) {
+      return true
+    }
+
+    if (legacyDirExists) {
+      copyMissingPathSync(legacyClaudeDir, wormgptDir)
+    }
+
+    for (const legacyFile of legacyGlobalConfigFiles) {
+      const wormgptFile = legacyFile.replace(/^\.claude/, '.wormgpt')
+      copyMissingPathSync(
+        join(homeDir, legacyFile),
+        join(homeDir, wormgptFile),
+      )
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Resolves the override env value for the config home directory.
+ * `WORMGPT_CONFIG_DIR` is preferred — `CLAUDE_CONFIG_DIR` is the legacy
+ * Anthropic name kept working for backward compatibility. When both are set
+ * and disagree, `WORMGPT_CONFIG_DIR` wins and we warn once so the user
+ * can clean up. Exported for tests.
+ */
+let warnedAboutConflictingConfigDirEnvs = false
+
+export function resolveConfigDirEnv(options?: {
+  wormgptConfigDir?: string
+  legacyConfigDir?: string
+  warn?: (message: string) => void
+}): string | undefined {
+  const open = options?.wormgptConfigDir
+  const legacy = options?.legacyConfigDir
+  if (open && legacy && open !== legacy && !warnedAboutConflictingConfigDirEnvs) {
+    const message = `Both WORMGPT_CONFIG_DIR and CLAUDE_CONFIG_DIR are set to different values. Using WORMGPT_CONFIG_DIR=${open}; ignoring CLAUDE_CONFIG_DIR=${legacy}.`
+    if (options?.warn) {
+      warnedAboutConflictingConfigDirEnvs = true
+      options.warn(message)
+    }
+  }
+  return open || legacy || undefined
+}
+
+/**
+ * Test-only escape hatch — resets the once-per-process conflict warning so
+ * unit tests can re-trigger it.
+ */
+export function __resetConfigDirEnvWarningForTesting(): void {
+  warnedAboutConflictingConfigDirEnvs = false
+}
+
+export function resolveClaudeConfigHomeDir(options?: {
+  configDirEnv?: string
+  homeDir?: string
+}): string {
+  if (options?.configDirEnv) {
+    return options.configDirEnv.normalize('NFC')
+  }
+
+  const homeDir = options?.homeDir ?? homedir()
+  const wormgptDir = join(homeDir, '.wormgpt')
+
+  return wormgptDir.normalize('NFC')
+}
+
+let claudeConfigHomeDirOverride: string | undefined
+
+export function setClaudeConfigHomeDirForTesting(
+  configDir: string | undefined,
+): void {
+  claudeConfigHomeDirOverride = configDir?.normalize('NFC')
+}
+
+export function getClaudeConfigHomeDirOverrideForTesting(): string | undefined {
+  return claudeConfigHomeDirOverride
+}
+
+// Memoized: 150+ callers, many on hot paths. Keyed off both override env
+// vars so tests that change either get a fresh value without explicit
+// cache.clear.
+export const getClaudeConfigHomeDir = memoize(
+  (): string => {
+    if (claudeConfigHomeDirOverride) {
+      return claudeConfigHomeDirOverride
+    }
+
+    const configDirEnv = resolveConfigDirEnv({
+      wormgptConfigDir: process.env.WORMGPT_CONFIG_DIR,
+      legacyConfigDir: process.env.CLAUDE_CONFIG_DIR,
+      warn: message => {
+        // eslint-disable-next-line no-console
+        console.warn(`[wormgpt] ${message}`)
+      },
+    })
+    const homeDir = homedir()
+    const migrationSucceeded = migrateLegacyClaudeConfigHome({
+      configDirEnv,
+      homeDir,
+    })
+    const wormgptDir = join(homeDir, '.wormgpt')
+    const legacyClaudeDir = join(homeDir, '.claude')
+
+    if (
+      !configDirEnv &&
+      !migrationSucceeded &&
+      !pathIsDirectory(wormgptDir) &&
+      pathExists(legacyClaudeDir)
+    ) {
+      return legacyClaudeDir.normalize('NFC')
+    }
+
+    return resolveClaudeConfigHomeDir({
+      configDirEnv,
+      homeDir,
+    })
+  },
+  () =>
+    `${claudeConfigHomeDirOverride ?? ''}\0${process.env.WORMGPT_CONFIG_DIR ?? ''}\0${process.env.CLAUDE_CONFIG_DIR ?? ''}`,
+)
+
+export function getTeamsDir(): string {
+  return join(getClaudeConfigHomeDir(), 'teams')
+}
+
+export function getProjectsDir(): string {
+  return join(getClaudeConfigHomeDir(), 'projects')
+}
+
+/**
+ * Check if NODE_OPTIONS contains a specific flag.
+ * Splits on whitespace and checks for exact match to avoid false positives.
+ */
+export function hasNodeOption(flag: string): boolean {
+  const nodeOptions = process.env.NODE_OPTIONS
+  if (!nodeOptions) {
+    return false
+  }
+  return nodeOptions.split(/\s+/).includes(flag)
+}
+
+export function isEnvTruthy(envVar: string | boolean | undefined): boolean {
+  if (!envVar) return false
+  if (typeof envVar === 'boolean') return envVar
+  const normalizedValue = envVar.toLowerCase().trim()
+  return ['1', 'true', 'yes', 'on'].includes(normalizedValue)
+}
+
+export function isEnvDefinedFalsy(
+  envVar: string | boolean | undefined,
+): boolean {
+  if (envVar === undefined) return false
+  if (typeof envVar === 'boolean') return !envVar
+  if (!envVar) return false
+  const normalizedValue = envVar.toLowerCase().trim()
+  return ['0', 'false', 'no', 'off'].includes(normalizedValue)
+}
+
+/**
+ * --bare / CLAUDE_CODE_SIMPLE — skip hooks, LSP, plugin sync, skill dir-walk,
+ * attribution, background prefetches, and ALL keychain/credential reads.
+ * Auth is strictly ANTHROPIC_API_KEY env or apiKeyHelper from --settings.
+ * Explicit CLI flags (--plugin-dir, --add-dir, --mcp-config) still honored.
+ * ~30 gates across the codebase.
+ *
+ * Checks argv directly (in addition to the env var) because several gates
+ * run before main.tsx's action handler sets CLAUDE_CODE_SIMPLE=1 from --bare
+ * — notably startKeychainPrefetch() at main.tsx top-level.
+ */
+export function isBareMode(): boolean {
+  return (
+    isEnvTruthy(process.env.CLAUDE_CODE_SIMPLE) ||
+    process.argv.includes('--bare')
+  )
+}
+
+/**
+ * Parses an array of environment variable strings into a key-value object
+ * @param envVars Array of strings in KEY=VALUE format
+ * @returns Object with key-value pairs
+ */
+export function parseEnvVars(
+  rawEnvArgs: string[] | undefined,
+): Record<string, string> {
+  const parsedEnv: Record<string, string> = {}
+
+  // Parse individual env vars
+  if (rawEnvArgs) {
+    for (const envStr of rawEnvArgs) {
+      const [key, ...valueParts] = envStr.split('=')
+      if (!key || valueParts.length === 0) {
+        throw new Error(
+          `Invalid environment variable format: ${envStr}, environment variables should be added as: -e KEY1=value1 -e KEY2=value2`,
+        )
+      }
+      parsedEnv[key] = valueParts.join('=')
+    }
+  }
+  return parsedEnv
+}
+
+/**
+ * Get the AWS region with fallback to default
+ * Matches the Anthropic Bedrock SDK's region behavior
+ */
+export function getAWSRegion(): string {
+  return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1'
+}
+
+/**
+ * Get the default Vertex AI region
+ */
+export function getDefaultVertexRegion(): string {
+  return process.env.CLOUD_ML_REGION || 'us-east5'
+}
+
+/**
+ * Check if bash commands should maintain project working directory (reset to original after each command)
+ * @returns true if CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR is set to a truthy value
+ */
+export function shouldMaintainProjectWorkingDir(): boolean {
+  return isEnvTruthy(process.env.CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR)
+}
+
+/**
+ * Check if running on Homespace (ant-internal cloud environment)
+ */
+export function isRunningOnHomespace(): boolean {
+  return (
+    process.env.USER_TYPE === 'ant' &&
+    isEnvTruthy(process.env.COO_RUNNING_ON_HOMESPACE)
+  )
+}
+
+/**
+ * Conservative check for whether Claude Code is running inside a protected
+ * (privileged or ASL3+) COO namespace or cluster.
+ *
+ * Conservative means: when signals are ambiguous, assume protected. We would
+ * rather over-report protected usage than miss it. Unprotected environments
+ * are homespace, namespaces on the open allowlist, and no k8s/COO signals
+ * at all (laptop/local dev).
+ *
+ * Used for telemetry to measure auto-mode usage in sensitive environments.
+ */
+export function isInProtectedNamespace(): boolean {
+  // USER_TYPE is build-time --define'd; in external builds this block is
+  // DCE'd so the require() and namespace allowlist never appear in the bundle.
+  if (process.env.USER_TYPE === 'ant') {
+    /* eslint-disable @typescript-eslint/no-require-imports */
+    return (
+      require('./protectedNamespace.js') as typeof import('./protectedNamespace.js')
+    ).checkProtectedNamespace()
+    /* eslint-enable @typescript-eslint/no-require-imports */
+  }
+  return false
+}
+
+// @[MODEL LAUNCH]: Add a Vertex region override env var for the new model.
+/**
+ * Model prefix → env var for Vertex region overrides.
+ * Order matters: more specific prefixes must come before less specific ones
+ * (e.g., 'claude-opus-4-1' before 'claude-opus-4').
+ */
+const VERTEX_REGION_OVERRIDES: ReadonlyArray<[string, string]> = [
+  ['claude-haiku-4-5', 'VERTEX_REGION_CLAUDE_HAIKU_4_5'],
+  ['claude-3-5-haiku', 'VERTEX_REGION_CLAUDE_3_5_HAIKU'],
+  ['claude-3-5-sonnet', 'VERTEX_REGION_CLAUDE_3_5_SONNET'],
+  ['claude-3-7-sonnet', 'VERTEX_REGION_CLAUDE_3_7_SONNET'],
+  ['claude-opus-4-1', 'VERTEX_REGION_CLAUDE_4_1_OPUS'],
+  ['claude-opus-4', 'VERTEX_REGION_CLAUDE_4_0_OPUS'],
+  ['claude-sonnet-4-6', 'VERTEX_REGION_CLAUDE_4_6_SONNET'],
+  ['claude-sonnet-4-5', 'VERTEX_REGION_CLAUDE_4_5_SONNET'],
+  ['claude-sonnet-4', 'VERTEX_REGION_CLAUDE_4_0_SONNET'],
+]
+
+/**
+ * Get the Vertex AI region for a specific model.
+ * Different models may be available in different regions.
+ */
+export function getVertexRegionForModel(
+  model: string | undefined,
+): string | undefined {
+  if (model) {
+    const match = VERTEX_REGION_OVERRIDES.find(([prefix]) =>
+      model.startsWith(prefix),
+    )
+    if (match) {
+      return process.env[match[1]] || getDefaultVertexRegion()
+    }
+  }
+  return getDefaultVertexRegion()
+}

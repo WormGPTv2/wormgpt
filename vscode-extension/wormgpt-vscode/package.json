@@ -1,0 +1,235 @@
+{
+  "name": "wormgpt-vscode",
+  "displayName": "WormGPT",
+  "description": "Practical VS Code companion for WormGPT with project-aware launch, Control Center, optional Microsoft Foundry / Azure OpenAI terminal env, and chat.",
+  "version": "0.2.0",
+  "publisher": "devnull-bootloader",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Themes",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:wormgpt.start",
+    "onCommand:wormgpt.startInWorkspaceRoot",
+    "onCommand:wormgpt.openDocs",
+    "onCommand:wormgpt.openSetupDocs",
+    "onCommand:wormgpt.openWorkspaceProfile",
+    "onCommand:wormgpt.openControlCenter",
+    "onCommand:wormgpt.newChat",
+    "onCommand:wormgpt.openChat",
+    "onCommand:wormgpt.resumeSession",
+    "onCommand:wormgpt.abortChat",
+    "onCommand:wormgpt.setAzureApiKey",
+    "onCommand:wormgpt.clearAzureApiKey",
+    "onCommand:wormgpt.configureAzureChat",
+    "onCommand:wormgpt.openAzureSettings",
+    "onView:wormgpt.controlCenter",
+    "onView:wormgpt.chat"
+  ],
+  "main": "./src/extension.js",
+  "files": [
+    "README.md",
+    "media/**",
+    "src/extension.js",
+    "src/presentation.js",
+    "src/state.js",
+    "src/chat/**",
+    "themes/**"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "wormgpt.start",
+        "title": "WormGPT: Launch in Terminal",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.startInWorkspaceRoot",
+        "title": "WormGPT: Launch in Workspace Root",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.openDocs",
+        "title": "WormGPT: Open Repository",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.openSetupDocs",
+        "title": "WormGPT: Open Setup Guide",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.openWorkspaceProfile",
+        "title": "WormGPT: Open Workspace Profile",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.openControlCenter",
+        "title": "WormGPT: Open Control Center",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.newChat",
+        "title": "WormGPT: New Chat",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.openChat",
+        "title": "WormGPT: Open Chat Panel",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.resumeSession",
+        "title": "WormGPT: Resume Session",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.abortChat",
+        "title": "WormGPT: Abort Generation",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.setAzureApiKey",
+        "title": "WormGPT: Set Azure / Foundry API Key (Secret Storage)",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.clearAzureApiKey",
+        "title": "WormGPT: Clear Azure / Foundry API Key",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.configureAzureChat",
+        "title": "WormGPT: Configure Azure / Foundry Chat (wizard)",
+        "category": "WormGPT"
+      },
+      {
+        "command": "wormgpt.openAzureSettings",
+        "title": "WormGPT: Open Azure / Foundry Settings",
+        "category": "WormGPT"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "wormgpt",
+          "title": "WormGPT",
+          "icon": "media/wormgpt.svg"
+        }
+      ]
+    },
+    "views": {
+      "wormgpt": [
+        {
+          "id": "wormgpt.chat",
+          "name": "Chat",
+          "type": "webview"
+        },
+        {
+          "id": "wormgpt.controlCenter",
+          "name": "Control Center",
+          "type": "webview"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "wormgpt.openChat",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l"
+      }
+    ],
+    "configuration": {
+      "title": "WormGPT",
+      "properties": {
+        "wormgpt.launchCommand": {
+          "type": "string",
+          "default": "wormgpt",
+          "description": "Command run in the integrated terminal when launching WormGPT."
+        },
+        "wormgpt.terminalName": {
+          "type": "string",
+          "default": "WormGPT",
+          "description": "Integrated terminal tab name for WormGPT sessions."
+        },
+        "wormgpt.useOpenAIShim": {
+          "type": "boolean",
+          "default": false,
+          "description": "Optionally set CLAUDE_CODE_USE_OPENAI=1 in launched WormGPT terminals when Azure injection is off or incomplete."
+        },
+        "wormgpt.azure.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, launch injects Microsoft Foundry / Azure OpenAI-compatible chat env (OPENAI_* + AZURE_OPENAI_API_VERSION) into the WormGPT terminal."
+        },
+        "wormgpt.azure.endpoint": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Azure resource base URL for OpenAI-compatible chat (example: `https://YOUR_RESOURCE.openai.azure.com`). Do not put `api-version` here; use **WormGPT: Azure API Version**."
+        },
+        "wormgpt.azure.apiVersion": {
+          "type": "string",
+          "default": "2024-12-01-preview",
+          "description": "Azure API version for chat completions (AZURE_OPENAI_API_VERSION)."
+        },
+        "wormgpt.azure.deployment": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Azure deployment name (maps to `OPENAI_MODEL` for the OpenAI shim)."
+        },
+        "wormgpt.azure.forceAzureUrlStyle": {
+          "type": "boolean",
+          "default": true,
+          "description": "Sets OPENAI_AZURE_STYLE=1 so deployment URLs and api-key header work on Foundry and non-standard Azure hosts."
+        },
+        "wormgpt.azure.apiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Optional API key in settings (not recommended). Prefer **WormGPT: Set Azure / Foundry API Key**. Secret wins if both are set."
+        },
+        "wormgpt.permissionMode": {
+          "type": "string",
+          "default": "acceptEdits",
+          "enum": ["default", "acceptEdits", "bypassPermissions", "plan"],
+          "enumDescriptions": [
+            "Prompt for permission on each tool use (requires manual approval)",
+            "Auto-approve file edits, prompt for other operations (recommended)",
+            "Auto-approve all operations without prompting",
+            "Read-only mode — no file modifications allowed"
+          ],
+          "description": "Permission mode for chat sessions. Controls which tool operations are auto-approved."
+        }
+      }
+    },
+    "themes": [
+      {
+        "label": "WormGPT Terminal Black",
+        "uiTheme": "vs-dark",
+        "path": "./themes/WormGPT-Terminal-Black.json"
+      }
+    ]
+  },
+  "scripts": {
+    "test": "bun test src",
+    "lint": "node scripts/lint.js",
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
+  "keywords": [
+    "wormgpt",
+    "terminal",
+    "theme",
+    "cli",
+    "llm",
+    "azure",
+    "foundry"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Gitlawb/wormgpt"
+  },
+  "license": "MIT"
+}
