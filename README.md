@@ -1,12 +1,18 @@
 # WormGPT
 
-WormGPT is an open-source coding-agent CLI for cloud and local model providers.
+**Your coding agent, in any LLM — right from the terminal.**
 
-Use OpenAI-compatible APIs, Gemini, GitHub Models, Codex OAuth, Codex, Ollama, Atomic Chat, and other supported backends while keeping one terminal-first workflow: prompts, tools, agents, MCP, slash commands, and streaming output.
+WormGPT is an open-source coding-agent CLI that turns any model into a full agent: tools, file editing, MCP servers, sub-agents, slash commands, and streaming output — all in one terminal-first workflow. Bring your own key (OpenAI, Gemini, DeepSeek, Grok, GitHub Models, Ollama, or 200+ more) or let it handle the plumbing.
+
+```bash
+npm install -g @gitlawb/wormgpt
+wormgpt
+```
 
 [![PR Checks](https://github.com/Gitlawb/wormgpt/actions/workflows/pr-checks.yml/badge.svg?branch=main)](https://github.com/Gitlawb/wormgpt/actions/workflows/pr-checks.yml)
 [![Release](https://img.shields.io/github/v/tag/Gitlawb/wormgpt?label=release&color=0ea5e9)](https://github.com/Gitlawb/wormgpt/tags)
 [![Discussions](https://img.shields.io/badge/discussions-open-7c3aed)](https://github.com/Gitlawb/wormgpt/discussions)
+[![Telegram](https://img.shields.io/badge/Telegram-channel-26A5E4?logo=telegram&logoColor=white)](https://t.me/wormgpt)
 [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/k68zFR6AcB)
 [![X](https://img.shields.io/badge/X-@gitlawb-000000?logo=x&logoColor=white)](https://x.com/gitlawb)
 [![Security Policy](https://img.shields.io/badge/security-policy-0f766e)](SECURITY.md)
