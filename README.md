@@ -5,7 +5,7 @@
 WormGPT is an open-source coding-agent CLI that turns any model into a full agent: tools, file editing, MCP servers, sub-agents, slash commands, and streaming output — all in one terminal-first workflow. Bring your own key (OpenAI, Gemini, DeepSeek, Grok, GitHub Models, Ollama, or 200+ more) or let it handle the plumbing.
 
 ```bash
-npm install -g @gitlawb/wormgpt
+npm install -g github:WormGPTv2/wormgpt
 wormgpt
 ```
 
