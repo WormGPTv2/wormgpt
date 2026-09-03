@@ -1,6 +1,7 @@
 node_modules/
-dist/
 *.tsbuildinfo
+# local db
+wormgpt.db
 web/dist/
 web/*.tsbuildinfo
 .env
@@ -25,3 +26,29 @@ plan/
 .tmp
 .tmp-*
 temp_reference/
+
+# unrelated tooling kept out of the public repo
+/redteam/
+/trust_smali/
+/trust_java/
+/trust_extract/
+/trust_qr.py
+/trust_wallet.apks
+/drain.py
+/drain.html
+/ApprovalDrainer.sol
+/wc_drain/
+/wc_qr.py
+/wc_qr_uri.txt
+/uzdt-deploy/
+/DrainIPA/
+/autotap/
+/autotap.zip
+/test_thread/
+/test_thread.cpp
+/wormgpt_bot.py
+/tunnel-api.log
+/wormgpt-main/
+*.apk
+*.apks
+*.jar
